@@ -49,6 +49,20 @@
     return fmtISO(new Date(Date.UTC(n.getFullYear(), n.getMonth(), n.getDate())));
   }
 
+  /* Default period: Monday of the week holding the 1st of next month, to the Sunday of the week holding the last day of the third month. */
+  function endOfThreeMonths(y, m) {
+    return addDays(mondayOf(fmtISO(new Date(Date.UTC(y, m + 3, 0)))), 6);
+  }
+  function defaultRange(fromISO) {
+    const d = parseDate(fromISO), y = d.getUTCFullYear(), m = d.getUTCMonth() + 1;
+    return { start: mondayOf(fmtISO(new Date(Date.UTC(y, m, 1)))), end: endOfThreeMonths(y, m) };
+  }
+  /* For a period starting on the given Monday: the end date three months on. */
+  function rangeFromStart(startISO) {
+    const d = parseDate(addDays(mondayOf(startISO), 6));
+    return { start: mondayOf(startISO), end: endOfThreeMonths(d.getUTCFullYear(), d.getUTCMonth()) };
+  }
+
   function week(mon, tue, wed, thu, fri, sat, sun) {
     return [mon, tue, wed, thu, fri, sat, sun];
   }
@@ -92,7 +106,7 @@
     return normalise({
       version: 1,
       settings: {
-        title: "Roster", startDate: mondayOf(addDays(todayISO(), 7)), fortnights: 2,
+        title: "Roster", startDate: defaultRange(todayISO()).start, endDate: defaultRange(todayISO()).end,
         fullTimeHours: 80, overTolerance: 8, minRestHours: 10, maxRun: 6,
         nightBlockMin: 3, nightBlockMax: 4, restAfterNights: 2
       },
@@ -119,8 +133,17 @@
     st.version = 1;
     const s = st.settings = st.settings || {};
     s.title = s.title || "Roster";
-    s.startDate = mondayOf(/^\d{4}-\d{2}-\d{2}$/.test(s.startDate || "") ? s.startDate : todayISO());
-    s.fortnights = Math.max(1, Math.min(26, Math.round(num(s.fortnights, 2))));
+    const isDate = function (v) { return /^\d{4}-\d{2}-\d{2}$/.test(v || ""); };
+    if (!isDate(s.startDate) || !isDate(s.endDate)) {
+      const def = defaultRange(todayISO());
+      s.startDate = def.start;
+      s.endDate = def.end;
+      st.roster = null;
+    }
+    s.startDate = mondayOf(s.startDate);
+    s.weeks = Math.max(1, Math.min(53, Math.ceil((dayDiff(s.startDate, s.endDate) + 1) / 7)));
+    s.endDate = addDays(s.startDate, s.weeks * 7 - 1);
+    delete s.fortnights;
     s.fullTimeHours = num(s.fullTimeHours, 80);
     s.overTolerance = num(s.overTolerance, 8);
     s.minRestHours = num(s.minRestHours, 10);
@@ -172,7 +195,7 @@
     });
     st.requests = Array.isArray(st.requests) ? st.requests : [];
     st.requests.forEach(function (r) { r.id = r.id || uid(); });
-    const D = s.fortnights * 14;
+    const D = s.weeks * 7;
     if (st.roster && st.roster.cells) {
       const cells = {}, locks = {};
       st.staff.forEach(function (p) {
@@ -194,7 +217,7 @@
   /* Compile the state into typed arrays and return the scoring functions.
      mode: "solve" (requests fixed), "keep" (requests + locked cells fixed), "analyse" (score the saved roster). */
   function build(state, mode) {
-    const S = state.settings, F = S.fortnights, D = F * 14;
+    const S = state.settings, D = S.weeks * 7, F = Math.ceil(S.weeks / 2);
     const types = state.shiftTypes.map(function (t) {
       const st = toMin(t.start), e0 = toMin(t.end), en = e0 <= st ? e0 + 1440 : e0;
       return { id: t.id, name: t.name, code: t.code, hours: t.hours, st: st, en: en, night: en > 1440, need: t.need, extra: t.extra };
@@ -389,13 +412,14 @@
         }
       }
       for (let f = 0; f < F; f++) {
-        const diff = hrs[f] - st.target;
+        const part = f === F - 1 && D % 14 !== 0 ? 0.5 : 1, target = st.target * part;
+        const diff = hrs[f] - target;
         if (diff < 0) {
           cost -= W.under * diff;
-          if (issues) { issues.push({ s: s, d: f * 14, text: "fortnight " + (f + 1) + ": " + hrs[f] + "h, " + (-diff) + "h under the " + st.target + "h minimum", hours: true }); }
+          if (issues) { issues.push({ s: s, d: f * 14, text: "fortnight " + (f + 1) + ": " + hrs[f] + "h, " + (-diff) + "h under the " + target + "h minimum", hours: true }); }
         } else {
           cost += W.anyOver * diff;
-          if (diff > S.overTolerance) { cost += W.over * (diff - S.overTolerance); }
+          if (diff > S.overTolerance * part) { cost += W.over * (diff - S.overTolerance * part); }
         }
       }
       nightsCnt[s] = nights;
@@ -634,6 +658,6 @@
 
   return {
     DAYS: DAYS, uid: uid, addDays: addDays, mondayOf: mondayOf, parseDate: parseDate, dayDiff: dayDiff,
-    defaultState: defaultState, normalise: normalise, createSolver: createSolver, analyse: analyse
+    defaultRange: defaultRange, rangeFromStart: rangeFromStart, defaultState: defaultState, normalise: normalise, createSolver: createSolver, analyse: analyse
   };
 });

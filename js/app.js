@@ -76,24 +76,24 @@
         (unf[u.d] = unf[u.d] || []).push(cellText(map[u.typeId]) + (u.missing > 1 ? "×" + u.missing : ""));
       });
     }
-    for (let f = 0; f < S.fortnights; f++) {
-      const base = f * 14;
+    for (let f = 0; f < Math.ceil(S.weeks / 2); f++) {
+      const base = f * 14, nW = Math.min(2, S.weeks - f * 2);
       html += "<div class=\"fnwrap\"><table class=\"fn\"><thead><tr>";
-      for (let w = 0; w < 2; w++) {
+      for (let w = 0; w < nW; w++) {
         html += "<th class=\"name\">" + monLabel(base + w * 7) + "</th>";
         E.DAYS.forEach(function (n) { html += "<th>" + n + "</th>"; });
-        html += w === 0 ? "<th class=\"gap\"></th>" : "<th class=\"hrs\">Hours</th>";
+        html += w < nW - 1 ? "<th class=\"gap\"></th>" : "<th class=\"hrs\">Hours</th>";
       }
       html += "</tr><tr>";
-      for (let w = 0; w < 2; w++) {
+      for (let w = 0; w < nW; w++) {
         html += "<th class=\"name\">Week " + (f * 2 + w + 1) + "</th>";
         for (let i = 0; i < 7; i++) { html += "<th>" + ord(dObj(base + w * 7 + i).getUTCDate()) + "</th>"; }
-        html += w === 0 ? "<th class=\"gap\"></th>" : "<th class=\"hrs\">2 weeks</th>";
+        html += w < nW - 1 ? "<th class=\"gap\"></th>" : "<th class=\"hrs\">" + (nW === 2 ? "2 weeks" : "1 week") + "</th>";
       }
       html += "</tr></thead><tbody>";
       state.staff.forEach(function (p) {
         html += "<tr>";
-        for (let w = 0; w < 2; w++) {
+        for (let w = 0; w < nW; w++) {
           html += "<th class=\"name\" title=\"" + esc(p.name) + "\">" + esc(p.name) + (p.fte !== 1 ? " (" + p.fte + ")" : "") + "</th>";
           for (let i = 0; i < 7; i++) {
             const d = base + w * 7 + i;
@@ -102,10 +102,10 @@
             html += "<td class=\"c" + (info ? "" : " empty") + (i >= 5 ? " we" : "") + (lock ? " lock" : "") + "\" data-s=\"" + p.id + "\" data-d=\"" + d + "\"" +
               (info ? " style=\"background:" + esc(info.color) + "\" title=\"" + esc(info.name + (info.time ? " " + info.time : "")) + "\"" : "") + ">" + esc(cellText(info)) + "</td>";
           }
-          if (w === 0) {
+          if (w < nW - 1) {
             html += "<td class=\"gap\"></td>";
           } else {
-            const h = an ? an.hours[p.id][f] : 0, target = p.fte * S.fullTimeHours;
+            const h = an ? an.hours[p.id][f] : 0, target = p.fte * S.fullTimeHours * nW / 2;
             html += "<td class=\"hrs" + (an && h < target ? " under" : "") + "\" title=\"Minimum " + target + "h\">" + (an ? h : "") + "</td>";
           }
         }
@@ -113,14 +113,14 @@
       });
       if (an) {
         let any = false, row = "<tr class=\"unf\">";
-        for (let w = 0; w < 2; w++) {
+        for (let w = 0; w < nW; w++) {
           row += "<th class=\"name\">Unfilled</th>";
           for (let i = 0; i < 7; i++) {
             const u = unf[base + w * 7 + i];
             if (u) { any = true; }
             row += u ? "<td class=\"u\" title=\"Needs cover\">" + esc(u.join(", ")) + "</td>" : "<td></td>";
           }
-          row += w === 0 ? "<td class=\"gap\"></td>" : "<td></td>";
+          row += w < nW - 1 ? "<td class=\"gap\"></td>" : "<td></td>";
         }
         if (any) { html += row + "</tr>"; }
       }
@@ -307,7 +307,7 @@
 
   /* ---------- Requests tab ---------- */
   function renderRequests() {
-    const S = state.settings, last = E.addDays(S.startDate, S.fortnights * 14 - 1), map = typeMap();
+    const S = state.settings, last = S.endDate, map = typeMap();
     let h = "<p class=\"hint\">Days off, leave, or a set shift for one person. Generate always respects these.</p><div class=\"card\"><div class=\"row\">" +
       "<label>Staff<select id=\"rqStaff\">" + state.staff.map(function (p) { return "<option value=\"" + p.id + "\">" + esc(p.name) + "</option>"; }).join("") + "</select></label>" +
       "<label>Request<select id=\"rqKind\"><option value=\"off|\">Day off</option><optgroup label=\"Leave\">" +
@@ -340,10 +340,12 @@
     $("tab-settings").innerHTML =
       "<h2>Roster period</h2><div class=\"card\"><div class=\"row\">" +
       "<label>Title<input type=\"text\" data-bind=\"settings.title\" data-rr value=\"" + esc(S.title) + "\"></label>" +
-      "<label>Start date (moves to the Monday)<input type=\"date\" id=\"setStart\" value=\"" + S.startDate + "\"></label>" +
-      numIn("Number of fortnights", "fortnights", "min=\"1\" max=\"26\"") +
+      "<label>From (moves to the Monday)<input type=\"date\" id=\"setStart\" value=\"" + S.startDate + "\"></label>" +
+      "<label>To (moves to the Sunday)<input type=\"date\" id=\"setEnd\" min=\"" + S.startDate + "\" value=\"" + S.endDate + "\"></label>" +
+      "<span class=\"hint\">" + isoLabel(S.startDate) + " – " + isoLabel(S.endDate) + " · " + S.weeks + " weeks</span>" +
       "</div><div class=\"row\"><button data-act=\"nextPeriod\">Start the next period</button>" +
-      "<span class=\"hint\">Moves the start date on by " + S.fortnights + " fortnight(s), keeps staff and shifts, clears the roster and past requests.</span></div></div>" +
+      "<button data-act=\"defaultPeriod\">Use the next 3 months</button>" +
+      "<span class=\"hint\">The next period starts the day after this one ends and runs 3 months. Staff and shifts are kept; the roster and past requests are cleared.</span></div></div>" +
       "<h2>Rules</h2><div class=\"card\"><div class=\"row\">" +
       numIn("Full-time hours per fortnight (1 FTE)", "fullTimeHours", "min=\"0\" step=\"0.5\"") +
       numIn("Hours over the minimum before it counts as too many", "overTolerance", "min=\"0\" step=\"0.5\"") +
@@ -412,10 +414,17 @@
       if (an) {
         an.unfilled.forEach(function (u) { (unf[u.d] = unf[u.d] || []).push(cellText(map[u.typeId])); });
       }
-      for (let f = 0; f < S.fortnights; f++) {
-        const base = f * 14;
+      for (let f = 0; f < Math.ceil(S.weeks / 2); f++) {
+        const base = f * 14, nW = Math.min(2, S.weeks - f * 2);
+        const skip = function (col) { return col === 9 || (nW === 1 && col >= 10 && col <= 17); };
+        const pad = function (arr, lastVal) {
+          if (nW === 1) {
+            for (let i = 0; i < 8; i++) { arr.push(""); }
+            arr.push(lastVal);
+          }
+        };
         const h1 = [], h2 = [];
-        for (let w = 0; w < 2; w++) {
+        for (let w = 0; w < nW; w++) {
           h1.push(monLabel(base + w * 7));
           h2.push("");
           for (let i = 0; i < 7; i++) {
@@ -425,10 +434,12 @@
           h1.push(w === 0 ? "" : "Hours");
           h2.push("");
         }
+        pad(h1, "Hours");
+        pad(h2, "");
         [h1, h2].forEach(function (vals) {
           const row = ws.addRow(vals);
           row.eachCell({ includeEmpty: true }, function (c, col) {
-            if (col === 9) { return; }
+            if (skip(col)) { return; }
             c.fill = fill("#3b434d");
             c.font = { bold: true, color: { argb: "FFFFFFFF" } };
             c.alignment = { horizontal: col === 1 || col === 10 ? "left" : "center" };
@@ -437,7 +448,7 @@
         });
         state.staff.forEach(function (p) {
           const vals = [], cols = [];
-          for (let w = 0; w < 2; w++) {
+          for (let w = 0; w < nW; w++) {
             vals.push(p.name + (p.fte !== 1 ? " (" + p.fte + ")" : ""));
             cols.push(null);
             for (let i = 0; i < 7; i++) {
@@ -449,19 +460,21 @@
             vals.push(w === 0 ? "" : (an ? an.hours[p.id][f] : ""));
             cols.push(null);
           }
+          pad(vals, an ? an.hours[p.id][f] : "");
+          pad(cols, null);
           const row = ws.addRow(vals);
           row.eachCell({ includeEmpty: true }, function (c, col) {
-            if (col === 9) { return; }
+            if (skip(col)) { return; }
             c.border = border;
             c.alignment = { horizontal: col === 1 || col === 10 ? "left" : "center" };
             if (col === 1 || col === 10 || col === 18) { c.font = { bold: true }; }
             if (cols[col - 1]) { c.fill = fill(cols[col - 1]); }
-            if (col === 18 && an && an.hours[p.id][f] < p.fte * S.fullTimeHours) { c.font = { bold: true, color: { argb: "FFCF222E" } }; }
+            if (col === 18 && an && an.hours[p.id][f] < p.fte * S.fullTimeHours * nW / 2) { c.font = { bold: true, color: { argb: "FFCF222E" } }; }
           });
         });
         const u = [];
         let any = false;
-        for (let w = 0; w < 2; w++) {
+        for (let w = 0; w < nW; w++) {
           u.push("Unfilled");
           for (let i = 0; i < 7; i++) {
             const x = unf[base + w * 7 + i];
@@ -473,7 +486,7 @@
         if (any) {
           const row = ws.addRow(u);
           row.eachCell({ includeEmpty: true }, function (c, col) {
-            if (col === 9 || col === 18) { return; }
+            if (skip(col) || col === 18) { return; }
             c.border = border;
             c.fill = fill("#ffc7ce");
             c.font = { bold: true, color: { argb: "FF9C0006" } };
@@ -578,11 +591,19 @@
       state.requests.splice(i, 1);
     },
     nextPeriod: function () {
-      const S = state.settings, next = E.addDays(S.startDate, S.fortnights * 14);
-      if (!window.confirm("Start the next period on " + isoLabel(next) + "? The current roster is cleared. Export it first if you want to keep it.")) { return false; }
-      S.startDate = next;
+      const S = state.settings, r = E.rangeFromStart(E.addDays(S.endDate, 1)), next = r.start;
+      if (!window.confirm("Start the next period, " + isoLabel(r.start) + " – " + isoLabel(r.end) + "? The current roster is cleared. Export it first if you want to keep it.")) { return false; }
+      S.startDate = r.start;
+      S.endDate = r.end;
       state.roster = null;
       state.requests = state.requests.filter(function (r) { return (r.to || r.from) >= next; });
+    },
+    defaultPeriod: function () {
+      const now = new Date(), r = E.defaultRange(now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-01");
+      if (state.roster && !window.confirm("Change the period to " + isoLabel(r.start) + " – " + isoLabel(r.end) + "? The current roster is cleared.")) { return false; }
+      state.settings.startDate = r.start;
+      state.settings.endDate = r.end;
+      state.roster = null;
     },
     export: function () {
       download(fileStem() + ".json", new Blob([JSON.stringify(state, null, 1)], { type: "application/json" }));
@@ -643,9 +664,18 @@
           return;
         }
         state.settings.startDate = m;
+        if (state.settings.endDate < m) { state.settings.endDate = E.rangeFromStart(m).end; }
         state.roster = null;
         commit(true);
       }
+    } else if (el.id === "setEnd" && el.value) {
+      if (el.value < state.settings.startDate) {
+        window.alert("The end date must be after the start date.");
+        el.value = state.settings.endDate;
+        return;
+      }
+      state.settings.endDate = el.value;
+      commit(true);
     } else if (el.id === "importFile" && el.files[0]) {
       importFile(el.files[0]);
       el.value = "";
