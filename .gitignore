@@ -8,3 +8,6 @@ exports/
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Test output
+.playwright-mcp/
