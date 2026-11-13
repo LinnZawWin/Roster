@@ -203,7 +203,10 @@
     busy = true;
     $("btnGenerate").disabled = true;
     $("progress").hidden = false;
-    const solver = E.createSolver(state, { keepLocks: $("keepLocks").checked });
+    // Try again (up to the limit in Settings) while any rule is broken, and keep the best attempt.
+    const opts = { keepLocks: $("keepLocks").checked }, max = state.settings.maxAttempts;
+    let attempt = 1, best = null, solver = E.createSolver(state, opts);
+    $("attempt").textContent = "";
     (function tick() {
       const done = solver.step(25000);
       $("progressBar").style.width = Math.round(solver.progress() * 100) + "%";
@@ -211,12 +214,26 @@
         setTimeout(tick, 0);
         return;
       }
-      state.roster = solver.result();
+      const roster = solver.result();
+      const an = E.analyse(Object.assign({}, state, { roster: roster }));
+      const broken = an.unfilled.length + an.issues.filter(function (i) { return !i.soft; }).length;
+      if (!best || broken < best.broken || (broken === best.broken && an.cost < best.cost)) {
+        best = { roster: roster, broken: broken, cost: an.cost };
+      }
+      if (broken > 0 && attempt < max) {
+        attempt++;
+        $("attempt").textContent = "Attempt " + attempt + " of " + max + " (best so far: " + best.broken + " to check)";
+        solver = E.createSolver(state, opts);
+        setTimeout(tick, 0);
+        return;
+      }
+      state.roster = best.roster;
       save();
       busy = false;
       $("btnGenerate").disabled = false;
       $("progress").hidden = true;
       $("progressBar").style.width = "0";
+      $("attempt").textContent = attempt > 1 ? "Best of " + attempt + " attempts" : "";
       renderRoster();
     })();
   }
@@ -355,6 +372,8 @@
       numIn("Nights grouped together: at least", "nightBlockMin", "min=\"1\" max=\"7\"") +
       numIn("and at most", "nightBlockMax", "min=\"1\" max=\"7\"") +
       numIn("Days off after a group of nights (min)", "restAfterNights", "min=\"0\" max=\"7\"") +
+      "</div><div class=\"row\">" +
+      numIn("Generate attempts while any rule is broken (e.g. hours under the minimum)", "maxAttempts", "min=\"1\" max=\"50\"") +
       "</div></div>" +
       "<h2>Save and load</h2><div class=\"card\"><p class=\"hint\">Everything stays in this browser. Export a file to keep a backup, move to another device, or reuse the setup next round.</p>" +
       "<div class=\"row\"><button class=\"primary\" data-act=\"export\">Export data file</button>" +

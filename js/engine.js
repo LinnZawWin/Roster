@@ -151,6 +151,7 @@
     s.nightBlockMin = Math.max(1, Math.round(num(s.nightBlockMin, 3)));
     s.nightBlockMax = Math.max(s.nightBlockMin, Math.round(num(s.nightBlockMax, 4)));
     s.restAfterNights = Math.max(0, Math.round(num(s.restAfterNights, 2)));
+    s.maxAttempts = Math.max(1, Math.min(50, Math.round(num(s.maxAttempts, 10))));
     st.shiftTypes = Array.isArray(st.shiftTypes) ? st.shiftTypes : [];
     st.shiftTypes.forEach(function (t) {
       t.id = t.id || uid();
