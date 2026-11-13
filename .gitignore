@@ -1,0 +1,10 @@
+# Exported roster data (contains staff details) - never commit
+*.json
+!package.json
+!package-lock.json
+exports/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
